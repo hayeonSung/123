@@ -8,12 +8,14 @@ import os
 import json
 from glob import glob
 import shutil
-
+from pydantic import BaseModel
 api = FastAPI()
+
 
 @api.get('/')
 def root():
     return {'message': 'Hello friends!'}
+
 
 # @api.post('/file_info')
 # async def file_info():
@@ -25,10 +27,10 @@ def root():
 #     for s3_object in bucket.objects.all():
 #         bucket_object_key = s3_object.key
 #         print(bucket_object_key)
-      
+
 #         print(s3_object)
 #         local_temp_save_path = './temp/' + bucket_object_key
-   
+
 #         os.makedirs('/'.join(local_temp_save_path.split('/')[:4]), exist_ok=True)
 #         file_loaded = s3_download_file(bucket_name, bucket_object_key, local_temp_save_path)
 #         downloaded_files.append(bucket_object_key)
@@ -41,17 +43,26 @@ def root():
 #             "SEX": "M",
 #         }
 #     }
-    
+
 #     return output
+class Item(BaseModel):
+    bucket_sub_path: str
 
 @api.post('/predict')
-def predict():
-
+def predict(item: Item):
+    dic = item.dict()
+    # s3 하위 디렉토리 지정
+    bucket_sub_path = dic['bucket_sub_path']
+    print(f"reqeust body: {dic}")
     bucket_name = 'ignites-ekg-files-dev.synergyai.co'
     bucket = s3.Bucket(bucket_name)
     os.makedirs('./temp/', exist_ok=True)
 
-    
+    downloaded_files_to_delete = []
+    downloaded_files_for_inference = []
+
+    bucket_sub_path = "/".join(bucket_sub_path.split("/")[:2])
+
     downloaded_files_to_delete = []
     downloaded_files_for_inference = []
 
@@ -59,11 +70,16 @@ def predict():
         bucket_object_key = s3_object.key
         print(bucket_object_key)
         local_temp_save_path = './temp/' + bucket_object_key
+        print(local_temp_save_path)
         os.makedirs('/'.join(local_temp_save_path.split('/')[:4]), exist_ok=True)
         file_loaded = s3_download_file(bucket_name, bucket_object_key, local_temp_save_path)
+        print(file_loaded)
         downloaded_files_to_delete.append(bucket_object_key)
         downloaded_files_for_inference.append(local_temp_save_path)
     
+
+
+
     #for deleting items in s3
     client = boto3.client('s3')
     for files in downloaded_files_to_delete:
@@ -77,12 +93,12 @@ def predict():
     upload_bucket_name = 'ignites-ekg-all-uploaded-files.synergyai.co'
 
     for files in downloaded_files_for_inference:
-       
+
         file_name = '/'.join(files.split('/')[2:4]) + '/'+date_and_time+'_'+ files.split('/')[-1]
-       
+
         upload_result = s3_upload_file(files, upload_bucket_name, file_name)
-    
-    
+
+
 
     for input_dir in downloaded_files_for_inference:
         print(input_dir)
@@ -130,16 +146,15 @@ def predict():
         risk = "HIGH"
     else:
         risk = "LOW"
-        
+
     output = {
-        file_name: {
             "ID": pinfo["ID"],
             "NAME": pinfo["NAME"],
             "AGE": pinfo["AGE"],
             "SEX": pinfo["SEX"],
             "DATETIME": pinfo["DATETIME"],
             "RISK": risk,
-        }
     }
+    print(output)
 
     return output
